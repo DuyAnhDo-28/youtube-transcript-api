@@ -1,56 +1,43 @@
-from flask import Flask, request, Response
-import requests
-import xml.etree.ElementTree as ET
-import json
-import os
+from flask import Flask, jsonify, request
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "✅ Transcript API hoạt động!"
+    return "✅ API hoạt động!"
 
 @app.route("/transcript/<video_id>")
 def get_transcript(video_id):
     lang = request.args.get("lang", "en")
-    url = f"https://video.google.com/timedtext?lang={lang}&v={video_id}"
-
     try:
-        response = requests.get(url)
-        if response.status_code != 200 or not response.text.strip():
-            raise Exception("Transcript not found or video unavailable")
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+        full_text = " ".join([entry['text'] for entry in transcript])
+        return jsonify({"text": full_text})
 
-        root = ET.fromstring(response.content)
-        texts = []
-
-        for child in root.findall("text"):
-            line = child.text or ""
-            line = (line
-                .replace("&amp;", "&")
-                .replace("&#39;", "'")
-                .replace("&quot;", '"')
-                .replace("&lt;", "<")
-                .replace("&gt;", ">"))
-            texts.append(line)
-
-        full_text = " ".join(texts)
-
-        return Response(
-            json.dumps({"text": full_text}, ensure_ascii=False),
-            content_type="application/json; charset=utf-8"
-        )
-
-    except Exception as e:
-        error = {
+    except NoTranscriptFound:
+        return jsonify({
             "error": f"Không tìm thấy phụ đề cho video '{video_id}' với ngôn ngữ '{lang}'.",
             "suggestion": "Thử video khác hoặc thêm ?lang=vi nếu có phụ đề tiếng Việt."
-        }
-        return Response(
-            json.dumps(error, ensure_ascii=False),
-            content_type="application/json; charset=utf-8"
-        )
+        }), 404
 
-# ✅ Sửa tại đây: lấy port từ biến môi trường, chạy trên 0.0.0.0
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    except TranscriptsDisabled:
+        return jsonify({
+            "error": "Video này đã tắt phụ đề.",
+            "suggestion": "Hãy thử video khác."
+        }), 403
+
+    except VideoUnavailable:
+        return jsonify({
+            "error": "Video không tồn tại hoặc bị giới hạn khu vực."
+        }), 404
+
+    except Exception as e:
+        return jsonify({
+            "error": "Lỗi không xác định.",
+            "details": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
