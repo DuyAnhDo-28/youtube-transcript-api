@@ -2,6 +2,7 @@ from flask import Flask, request, Response
 import requests
 import xml.etree.ElementTree as ET
 import json
+import os
 
 app = Flask(__name__)
 
@@ -49,5 +50,7 @@ def get_transcript(video_id):
             content_type="application/json; charset=utf-8"
         )
 
+# ✅ Sửa tại đây: lấy port từ biến môi trường, chạy trên 0.0.0.0
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
